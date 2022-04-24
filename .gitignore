@@ -37,3 +37,9 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+.Rproj.user
+
+# Other Project Files
+insert_ggAPI.csv
+list_custom.functions.txt
+*.Rproj
