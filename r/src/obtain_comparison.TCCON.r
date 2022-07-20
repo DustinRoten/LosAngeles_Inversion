@@ -43,7 +43,7 @@ obtain_comparison.TCCON <- function(TCCON.comparison.path = NULL, xco2.path = NU
   
   #save the information in a background file
   write.csv(TCCON_signal,
-            file = file.path(obs.dir, 'TCCON_signal.csv'),
+            file = file.path(output.path, 'TCCON_signal.csv'),
             row.names = FALSE)
   
 }

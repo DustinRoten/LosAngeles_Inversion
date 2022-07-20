@@ -29,7 +29,7 @@ obtain_background.TCCON <- function(TCCON.background.path = NULL, timestr = NULL
   
   #save the information in a background file
   write.csv(TCCON_background,
-            file = file.path(obs.dir, 'TCCON_background.csv'),
+            file = file.path(output.path, 'TCCON_background.csv'),
             row.names = FALSE)
   
 }

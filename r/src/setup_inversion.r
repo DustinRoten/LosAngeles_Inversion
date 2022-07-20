@@ -248,7 +248,7 @@ setup_inversion <- function(api.key, homedir, input.data, workdir, site,
     obtain_background.OCO3(xco2.path,
                            sector.list = read.csv(sector.definitions.path),
                            bkg.tolerance = 0.01, sounding.tolerance = 20,
-                           output.path)
+                           output.path = obs.dir)
     #############################################
     #############################################
     

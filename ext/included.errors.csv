@@ -1,0 +1,7 @@
+name,RMSE
+R_part,0.063
+R_PBL,0.2
+R_wind,1.0
+R_inst,1.0
+R_bkgd,1.0
+R_bio,0.16

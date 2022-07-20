@@ -172,4 +172,3 @@ rslurm::slurm_apply(f = setup_inversion,
                     cpus_per_node = 25,
                     pkgs = 'base',
                     slurm_options = slurm_options)
-
