@@ -46,3 +46,6 @@ list_custom.functions.txt
 
 # Slurm Output
 _rslurm*/
+
+# Ignore these directories
+/Out/

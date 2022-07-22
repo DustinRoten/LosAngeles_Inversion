@@ -2,7 +2,7 @@
 #load essential libraries
 library(ggplot2); library(plotly); library(ggmap)
 library(mcr); library(Metrics); library(ape)
-library(qcc); library(patchwork)
+library(qcc); library(patchwork); library(dplyr)
 
 #setup the input file paths
 home.dir <- '/uufs/chpc.utah.edu/common/home'
@@ -19,6 +19,9 @@ ymin <- 33.58086; ymax <- 34.34599
 OCO3.bkg.threshold <- 0.01
 lambda_p <- 1
 S_p <- 0.12
+
+#include TCCON data
+TCCON.value <- 1.081404
 
 #get domain map
 #register the api key for google maps to work
@@ -125,8 +128,59 @@ K.all <- as.vector(rowSums(xco2_df[,gsub(' ', '', priors[,1])]))
 #make z
 z.all <- as.vector(xco2_df$xco2 - (xco2_df$bio + xco2_df$OCO3.bkg))
 
-#calculate difference
-prior_diff <- mean(z.all - K.all)
+#make R
+xco2.errors_df <-
+  #observed
+  (xco2_df$xco2 - (xco2_df$bio + xco2_df$OCO3.bkg)) -
+  #modeled
+  (rowSums(xco2_df[,gsub(' ', '', priors[,1])]))
+
+spatial.error_df <-
+  data.frame(time = xco2_df$date.time,
+             lon = xco2_df$lon,
+             lat = xco2_df$lat,
+             error = abs(xco2.errors_df))
+
+R.all <- spatial.correlation(spatial.error = spatial.error_df,
+                             vgm.binwidth = 3, vgm.cutoff = 20,
+                             included.xco2.errors =
+                               'ext/included.errors.csv',
+                             plot.output.path = 'Out/all.R/')
+
+#do math
+term.1 <- as.matrix(S_p) %*% t(K.all)
+term.2 <- solve((K.all %*% as.matrix(S_p) %*% t(K.all)) + R.all)
+term.3 <- (z.all - (K.all %*% as.matrix(lambda_p)))
+
+lambda_hat.tot <- lambda_p + (term.1 %*% (term.2 %*% term.3))
+S_error.tot <- solve(t(K.all) %*% solve(R.all) %*% K.all + solve(S_p))
+
+#plot the error histograms
+prior.values <- z.all - (K.all %*% as.matrix(lambda_p))
+mean.prior.values <- round(mean(prior.values), 4)
+posterior.values <- z.all - (K.all %*% as.matrix(lambda_hat.tot))
+mean.posterior.values <- round(mean(posterior.values), 4)
+
+prior.posterior.plot <- ggplot() +
+  ggtitle(paste0('Prior and Posterior Errors Using All SAMs')) +
+  labs(subtitle =
+         as.expression(bquote(bar(epsilon)['p']==.(mean.prior.values)*
+                                ';'~bar(hat(epsilon))==.(mean.posterior.values)))) +
+  xlab('Error [ppm]') +
+  ylab('Count') +
+  geom_histogram(aes(prior.values),
+                 color = 'black', fill = 'black', alpha = 0.5) +
+  geom_histogram(aes(posterior.values),
+                 color = 'black', fill = 'red', alpha = 0.25) +
+  geom_vline(xintercept = mean(prior.values),
+             linetype = 'dashed', size = 1) +
+  geom_vline(xintercept = mean(posterior.values),
+             linetype = 'dashed', color = 'red', size = 1) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(prior.posterior.plot,
+       filename = 'Out/Results/Prior_Posterior.jpg',
+       device = 'jpg', width = 5, height = 3, units = 'in')
 
 #read in Monte Carlo data
 collect.SAM.data <- read.csv('MC_Output.csv')
@@ -171,6 +225,9 @@ signal.plot <- ggplot() +
   theme_classic() +
   theme(plot.title = element_text(hjust = 0.5),
         legend.position = 'bottom')
+ggsave(signal.plot,
+       filename = file.path('Out/Results/Mean_Enhancement.jpg'),
+       height = 5, width = 6, device = 'jpg', units = 'in')
 
 #lm.fit.2
 sounding.density <-
@@ -209,6 +266,9 @@ density.plot <- ggplot() +
   theme_classic() +
   theme(plot.title = element_text(hjust = 0.5),
         legend.position = 'bottom')
+ggsave(density.plot,
+       filename = file.path('Out/Results/Mean_Density.jpg'),
+       height = 5, width = 6, device = 'jpg', units = 'in')
 
 multi.regression <-
   lm(collect.SAM.data$posterior.mean.err ~
@@ -274,7 +334,7 @@ SAM.table_df$SAM.list <- factor(SAM.table_df$SAM.list,
                                 levels = SAM.table_df$SAM.list)
 
 #Pareto chart of effective SAMs
-ggplot() +
+pareto.plot <- ggplot() +
   ggtitle('SAMs Contributing to Error Reduction') +
   xlab('SAM') +
   ylab('Count') +
@@ -287,6 +347,9 @@ ggplot() +
   theme_classic() +
   theme(plot.title = element_text(hjust = 0.5),
         axis.text.x = element_text(angle = 90))
+ggsave(pareto.plot,
+       filename = 'Out/Results/Pareto_Chart.jpg',
+       height = 4, width = 6, device = 'jpg', units = 'in')
 
 #effective SAMs
 SAM.table_df$SAM.list <- as.POSIXct(SAM.table_df$SAM.list,
@@ -541,10 +604,10 @@ test_6.plot <- ggplot() +
 t.test_plot <- (test_1.plot + test_2.plot + test_3.plot)/
   (test_4.plot + test_5.plot + test_6.plot)
 t.test_plot <- t.test_plot +
-  plot_annotation(title = 'T-test Results of SAMs',
+  plot_annotation(title = 'U-test Results of SAMs',
                   theme = 
                     theme(plot.title = element_text(hjust = 0.5)))
-ggsave(t.test_plot, filename = 'Out/Results/t_tests.jpg',
+ggsave(t.test_plot, filename = 'Out/Results/U_tests.jpg',
        device = 'jpg', height = 5, width = 7, unit = 'in')
 
 
@@ -572,6 +635,7 @@ SAM.times$outcomes <- linear.filter(m.slope.1, SAM.times$mean.xco2,
                                     m.slope.2, SAM.times$num_of_soundings,
                                     m.intercept)
 
+#run other filtering methods here
 new.SAMs <-
   SAM.times$date.time[which(SAM.times$num_of_soundings >= 275)]
 new.soundings <- xco2_df$date.time %in% new.SAMs
@@ -611,5 +675,223 @@ term.3 <- (z - (K %*% as.matrix(lambda_p)))
 lambda_hat <- lambda_p + (term.1 %*% (term.2 %*% term.3))
 S_error <- solve(t(K) %*% solve(R) %*% K + solve(S_p))
 
+#save for the comparison barplot
+lambda_hat.actual <- lambda_hat
+
 write.csv(new.SAMs, file = paste0('ext/filtered_SAMs.csv'),
           row.names = FALSE)
+########################
+########################
+
+
+
+##########################################
+### Use New Lambda_hat in Calculations ###
+##########################################
+new.errors <- (z.all - (K.all %*% as.matrix(lambda_hat)))
+mean.new.errors <- round(mean(new.errors), 4)
+
+mean.sub.errors <- round(mean(z - (K %*% as.matrix(lambda_hat))), 4)
+
+new.prior.posterior.plot <- ggplot() +
+  ggtitle('Prior and Posterior Errors') +
+  labs(subtitle =
+         as.expression(bquote(bar(epsilon)['p']==.(mean.prior.values)*
+                                ';'~bar(hat(epsilon))==.(mean.new.errors)*
+                                ';'~bar(hat(epsilon))['sub']==.(mean.sub.errors)))) +
+  xlab('Error [ppm]') +
+  ylab('Count') +
+  geom_histogram(aes(z.all - K.all),
+                 color = 'black', fill = 'black', alpha = 1) +
+  geom_histogram(aes(new.errors),
+                 color = 'black', fill = 'lightblue', alpha = 0.5) +
+  geom_histogram(aes(z - (K %*% as.matrix(lambda_hat))),
+                 color = 'black', fill = 'green', alpha = 0.5) +
+  geom_vline(xintercept = mean(z.all - K.all),
+             color = 'black', linetype = 'dashed', size = 0.75) +
+  geom_vline(xintercept = mean.new.errors,
+             color = 'lightblue', linetype = 'dashed', size = 0.75) +
+  geom_vline(xintercept = mean.sub.errors,
+             color = 'green', linetype = 'dashed', size = 0.75) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5))
+ggsave(new.prior.posterior.plot,
+       filename = 'Out/Results/New_Prior_Posterior.jpg',
+       device = 'jpg', width = 5, height = 3, units = 'in')
+##########################################
+##########################################
+
+
+
+###############################
+### Other Inversion Methods ###
+###############################
+#run other filtering methods here
+### Filter by Mean Signal ###
+new.SAMs <-
+  SAM.times$date.time[which(SAM.times$mean.xco2 >= 2)]
+new.soundings <- xco2_df$date.time %in% new.SAMs
+new.soundings <- xco2_df[new.soundings,]
+
+#make R
+xco2.errors_df <-
+  #observed
+  (new.soundings$xco2 - (new.soundings$bio +
+                           new.soundings$OCO3.bkg)) -
+  #modeled
+  (rowSums(new.soundings[,gsub(' ', '', priors[,1])]))
+
+spatial.error_df <-
+  data.frame(time = new.soundings$date.time,
+             lon = new.soundings$lon,
+             lat = new.soundings$lat,
+             error = abs(xco2.errors_df))
+
+R <- spatial.correlation(spatial.error = spatial.error_df,
+                         vgm.binwidth = 3, vgm.cutoff = 20,
+                         included.xco2.errors =
+                           'ext/included.errors.csv',
+                         plot.output.path = 'Out/new.R/')
+
+#do the inversion
+K <- rowSums(new.soundings[,gsub(' ', '', priors[,1])])
+z <- new.soundings$xco2 -
+  (new.soundings$bio + new.soundings$OCO3.bkg)
+
+term.1 <- as.matrix(S_p) %*% t(K)
+term.2 <- solve((K %*% as.matrix(S_p) %*% t(K)) + R)
+term.3 <- (z - (K %*% as.matrix(lambda_p)))
+
+lambda_hat <- lambda_p + (term.1 %*% (term.2 %*% term.3))
+S_error <- solve(t(K) %*% solve(R) %*% K + solve(S_p))
+lambda_hat.sig <- lambda_hat
+##########
+
+### Filter by Both ###
+new.SAMs <-
+  SAM.times$date.time[which(SAM.times$mean.xco2 >= 2 &
+                              SAM.times$num_of_soundings >= 275)]
+new.soundings <- xco2_df$date.time %in% new.SAMs
+new.soundings <- xco2_df[new.soundings,]
+
+#make R
+xco2.errors_df <-
+  #observed
+  (new.soundings$xco2 - (new.soundings$bio +
+                           new.soundings$OCO3.bkg)) -
+  #modeled
+  (rowSums(new.soundings[,gsub(' ', '', priors[,1])]))
+
+spatial.error_df <-
+  data.frame(time = new.soundings$date.time,
+             lon = new.soundings$lon,
+             lat = new.soundings$lat,
+             error = abs(xco2.errors_df))
+
+R <- spatial.correlation(spatial.error = spatial.error_df,
+                         vgm.binwidth = 3, vgm.cutoff = 20,
+                         included.xco2.errors =
+                           'ext/included.errors.csv',
+                         plot.output.path = 'Out/new.R/')
+
+#do the inversion
+K <- rowSums(new.soundings[,gsub(' ', '', priors[,1])])
+z <- new.soundings$xco2 -
+  (new.soundings$bio + new.soundings$OCO3.bkg)
+
+term.1 <- as.matrix(S_p) %*% t(K)
+term.2 <- solve((K %*% as.matrix(S_p) %*% t(K)) + R)
+term.3 <- (z - (K %*% as.matrix(lambda_p)))
+
+lambda_hat <- lambda_p + (term.1 %*% (term.2 %*% term.3))
+S_error <- solve(t(K) %*% solve(R) %*% K + solve(S_p))
+lambda_hat.both <- lambda_hat
+##########
+
+### Filter by Linear Model ###
+new.SAMs <-
+  SAM.times$date.time[which(SAM.times$outcomes < mean(z.all - K.all))]
+new.soundings <- xco2_df$date.time %in% new.SAMs
+new.soundings <- xco2_df[new.soundings,]
+
+#make R
+xco2.errors_df <-
+  #observed
+  (new.soundings$xco2 - (new.soundings$bio +
+                           new.soundings$OCO3.bkg)) -
+  #modeled
+  (rowSums(new.soundings[,gsub(' ', '', priors[,1])]))
+
+spatial.error_df <-
+  data.frame(time = new.soundings$date.time,
+             lon = new.soundings$lon,
+             lat = new.soundings$lat,
+             error = abs(xco2.errors_df))
+
+R <- spatial.correlation(spatial.error = spatial.error_df,
+                         vgm.binwidth = 3, vgm.cutoff = 20,
+                         included.xco2.errors =
+                           'ext/included.errors.csv',
+                         plot.output.path = 'Out/new.R/')
+
+#do the inversion
+K <- rowSums(new.soundings[,gsub(' ', '', priors[,1])])
+z <- new.soundings$xco2 -
+  (new.soundings$bio + new.soundings$OCO3.bkg)
+
+term.1 <- as.matrix(S_p) %*% t(K)
+term.2 <- solve((K %*% as.matrix(S_p) %*% t(K)) + R)
+term.3 <- (z - (K %*% as.matrix(lambda_p)))
+
+lambda_hat <- lambda_p + (term.1 %*% (term.2 %*% term.3))
+S_error <- solve(t(K) %*% solve(R) %*% K + solve(S_p))
+lambda_hat.lm <- lambda_hat
+##########
+
+### Filter by Success ###
+lambda_hat.average <-
+  mean(subset(collect.SAM.data,
+              posterior.mean.err <= mean(z.all - K.all))$lambda_hat)
+##########
+
+#comparison plot
+comparison_df <- data.frame(name = c('TCCON',
+                                     'All SAMs',
+                                     'All Successful\nIterations',
+                                     'Mean Signal',
+                                     'SAM Density',
+                                     'Mean Signal &\nDensity',
+                                     'Linear Model'),
+                            values = c(TCCON.value,
+                                       lambda_hat.tot,
+                                       lambda_hat.average,
+                                       lambda_hat.sig,
+                                       lambda_hat.actual,
+                                       lambda_hat.both,
+                                       lambda_hat.lm))
+
+comparison_df$name <- factor(comparison_df$name,
+                             levels = c('TCCON',
+                                        'All SAMs',
+                                        'All Successful\nIterations',
+                                        'Mean Signal',
+                                        'SAM Density',
+                                        'Mean Signal &\nDensity',
+                                        'Linear Model'))
+
+scaling.factors.plot <- ggplot() +
+  ggtitle('Scaling Factors') +
+  xlab('Filtering Method') +
+  ylab(expression(hat(lambda))) +
+  geom_hline(yintercept = 1, linetype = 'dashed') +
+  geom_bar(data = comparison_df, stat = 'identity',
+           aes(x = name, y = values, fill = name),
+           color = 'black', width = 0.5) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = 'none',
+        axis.text.x = element_text(angle = 45, hjust = 1))
+ggsave(scaling.factors.plot,
+       filename = 'Out/Results/Scaling_Factors.jpg',
+       device = 'jpg', height = 3, width = 5,
+       units = 'in')
