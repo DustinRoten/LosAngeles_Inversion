@@ -1,0 +1,7 @@
+category,lambda_p,S_p
+Power Industry,1.0,0.05
+Manufacturing,1.0,0.03
+OnRoad,1.0,0.05
+NonRoad,1.0,0.05
+Buildings,1.0,0.05
+_LPS,1.1,0.1

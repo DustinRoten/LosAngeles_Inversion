@@ -5,7 +5,7 @@
 options(stringsAsFactors = FALSE)
 
 #delegate space for potential tmp files from the process
-tmp.path <- '/scratch/general/lustre/u1211790'
+tmp.path <- '/scratch/general/vast/u1211790'
 if(!dir.exists(tmp.path)) dir.create(tmp.path)
 ##########################################################
 ##########################################################
@@ -33,7 +33,7 @@ ymin <- 33.58086; ymax <- 34.34599
 
 #Comparison TCCON
 TCCON.lon <- -118.127; TCCON.lat <- 34.136
-dlon <- 0.5; dlat <- 0.5
+dlon <- 0.05; dlat <- 0.05
 #################################
 #################################
 
@@ -97,7 +97,7 @@ observation.values <- 'obs.rds'
 background.values <- 'background.rds'
 
 #include SLURM options
-slurm_options <- list(time = '48:00:00',
+slurm_options <- list(time = '72:00:00',
                       account = 'lin-np',
                       partition = 'lin-np')
 job <- paste0('LA_Inversion')
@@ -131,13 +131,13 @@ OCO_3 <- list.files(file.path(homedir, input.data, instrument),
 #provide path for coincident TCCON site
 TCCON.comparison.path <- list.files(file.path(homedir, input.data,
                                               'TCCON', 'Caltech'),
-                                    pattern = '*.public.csv',
+                                    pattern = '*.public.qc.csv',
                                     full.names = TRUE)
 
 #provide path for background TCCON data
 TCCON.background.path <- list.files(file.path(homedir, input.data,
                                               'TCCON', 'Edwards'),
-                                    pattern = '*.public.csv',
+                                    pattern = '*.public.qc.csv',
                                     full.names = TRUE)
 ##################
 ################## 
@@ -163,12 +163,51 @@ p.table <- data.frame(api.key, homedir, input.data, workdir,
                       OCO_3, TCCON.comparison.path,
                       TCCON.lon, TCCON.lat, dlon, dlat,
                       TCCON.background.path, tmp.path)
+p.table <- p.table[37,]
 
 #run jobs in parallel with SLURM
-rslurm::slurm_apply(f = setup_inversion,
-                    params = p.table,
-                    jobname = job,
-                    nodes = 3,
-                    cpus_per_node = 25,
-                    pkgs = 'base',
-                    slurm_options = slurm_options)
+# rslurm::slurm_apply(f = setup_inversion,
+#                     params = p.table,
+#                     jobname = job,
+#                     nodes = 3,
+#                     cpus_per_node = 25,
+#                     pkgs = 'base',
+#                     slurm_options = slurm_options)
+
+setup_inversion(api.key = p.table$api.key,
+                homedir = p.table$homedir,
+                input.data = p.table$input.data,
+                workdir = p.table$workdir,
+                site = p.table$site,
+                xmin = p.table$xmin, xmax = p.table$xmax,
+                ymin = p.table$ymin, ymax = p.table$ymax,
+                lon_res = p.table$lon_res,
+                lat_res = p.table$lat_res,
+                domain.inventory = p.table$domain.inventory,
+                domain.path = p.table$domain.path,
+                background.path = p.table$background.path, 
+                sector.definitions.path = p.table$sector.definitions.path,
+                downscaling = p.table$downscaling,
+                SMUrF.path = p.table$SMUrF.path,
+                SMUrF.output = p.table$SMUrF.output,
+                use.year = p.table$use.year,
+                flux_units = p.table$flux_units,
+                output.directory = p.table$output.directory,
+                included.errors = p.table$included.errors,
+                prior.emissions = p.table$prior.emissions,
+                truth.emissions = p.table$truth.emissions,
+                background.emissions = p.table$background.emissions,
+                prior.uncertainty = p.table$prior.uncertainty,
+                bio.emissions = p.table$bio.emissions,
+                prior.lonlat = p.table$prior.lonlat,
+                background.lonlat = p.table$background.lonlat,
+                observation.values = p.table$observation.values,
+                background.values = p.table$background.values,
+                footprints.dirs = p.table$footprints.dirs,
+                OCO_3 = p.table$OCO_3,
+                TCCON.comparison.path = p.table$TCCON.comparison.path,
+                TCCON.lon = p.table$TCCON.lon,
+                TCCON.lat = p.table$TCCON.lat,
+                dlon = p.table$dlon, dlat = p.table$dlat,
+                TCCON.background.path = p.table$TCCON.background.path,
+                tmp.path = p.table$tmp.path)

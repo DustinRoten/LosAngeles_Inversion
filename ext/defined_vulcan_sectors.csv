@@ -1,7 +1,12 @@
 category,Vulcan_SectorList
 Power Industry,elec_prod
-Manufacturing,industrial cement
+Industry,industrial
+Cement,cement
 OnRoad,onroad
-NonRoad,nonroad rail airport cmv
-Buildings,commercial residential
+NonRoad,nonroad
+Rail,rail
+Aviation,airport
+Marine,cmv
+Commercial Buildings,commercial
+Residential Buildings,residential
 _LPS,airport cement elec_prod industrial

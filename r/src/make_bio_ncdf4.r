@@ -6,6 +6,10 @@
 # Written by Lewis Kunik, modified by DVM 6/3/2019
 # Adapted for SMUrF by Dustin Roten 5/19/2021
 
+### KNOWN BUG ###
+#issue at 
+
+
 #' In cases where you require data from an incomplete SMUrF
 #' dataset, include an alternative year as `match.year` to
 #' pull biospheric flux from.
@@ -58,7 +62,8 @@ make_bio_ncdf4 <- function(SMUrF.path = NULL, SMUrF.output = NULL,
     #Get the indices of corresponding SMUrF files.
     matched.files <-
       which(!is.na(str_match(basename(all.SMUrF.files),
-                             pattern = year.month)))
+                             pattern = paste(year.month,
+                                             collapse = '|'))))
     SMUrF.files <- all.SMUrF.files[matched.files]
   }
   

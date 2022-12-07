@@ -6,7 +6,8 @@ home.dir <- '/uufs/chpc.utah.edu/common/home'
 work.ext <- 'u1211790/LosAngeles_Inversion'
 data.ext <- 'lin-group14/DDR/OCO3_LosAngeles/Bayesian_Inversion'
 
-tzone <- 'America/Los_Angeles'
+inversion.breaks <- c('20190814', '20200401', '20200505', '20201231')
+#inversion.breaks <- c('20190814', '20211231')
 
 #initialize functions
 setwd(file.path(home.dir, work.ext))
@@ -168,6 +169,7 @@ ggplot() +
                  aes(((xco2 - bio) - background) -
                    rowSums(all.backgrounds_df[,gsub(' ', '', priors[,1])])),
                  fill = 'white', alpha = 0.5)
+
 #########################
 #########################
 
@@ -177,7 +179,7 @@ ggplot() +
 ### Running the Inversion ###
 #############################
 #ensure that every sounding has a background value
-sub.xco2_df <- xco2_df[complete.cases(xco2_df$OCO3.bkg),]
+sub.xco2_df <- xco2_df[complete.cases(xco2_df$background),]
 
 #subset signals above the background value
 sub.xco2_df <- subset(sub.xco2_df,
@@ -185,42 +187,62 @@ sub.xco2_df <- subset(sub.xco2_df,
 
 #obtain the sector and error information
 sectors <- read.csv('ext/defined_vulcan_sectors.csv')
-priors <- sectors$category
-priors <- grep(priors, pattern = '_', value = TRUE, invert = TRUE)
 xco2.errors <- read.csv('ext/included.errors.csv')
 
-#get SAM times
-SAM.times <- unique(sub.xco2_df$date.time)
-lambda_p <- 1; S_p <- 1.0
-for(i in 1:length(SAM.times)) {
+#loop through the time breaks
+inversion.breaks <- as.POSIXct(inversion.breaks,
+                               format = '%Y%m%d',
+                               tz = 'UTC')
+
+#change the date.time values in sub.xco2_df to POSIX
+sub.xco2_df$date.time <- as.POSIXct(sub.xco2_df$date.time,
+                                    origin = '1970-01-01',
+                                    tz = 'UTC')
+
+for(i in 1:(length(inversion.breaks) - 1)) {
+  
+  #read in the corresponding prior file
+  priors <- read.csv(paste0('ext/S_prior.', i, '.csv'))
+  
+  #check that the sector names match
+  if(any(sectors[,1] != priors[,1]))
+    stop('Check category names in /ext/ files!')
+  
+  #currently, the large point source category isn't needed.
+  which.p <- grep(priors$category, pattern = '_', invert = TRUE)
+  priors <- priors[which.p,]
   
   #make lambda_p
-  if(i > 1) {
-    lambda_p <- lambda_hat
-    S_p <- S_error
-  }
+  lambda_p <- 1
+  
+  #make S_p
+  S_p <- 1-0.75
+  
+  #get all of the soundings within the timeframe
+  time.sub.xco2_df <- subset(sub.xco2_df,
+                             date.time >= inversion.breaks[i] &
+                             date.time < inversion.breaks[i+1])
   
   #make K
-  time.xco2_df <- subset(sub.xco2_df, date.time == SAM.times[i])
-  K <- as.matrix(rowSums(time.xco2_df[,gsub(' ', '', priors)]))
+  K <- rowSums(time.sub.xco2_df[,gsub(' ', '', priors[,1])])
   
   #make z
   z <-
-    (time.xco2_df$xco2 - time.xco2_df$bio) -
-    (time.xco2_df$OCO3.bkg)
+    (time.sub.xco2_df$xco2 - time.sub.xco2_df$bio) -
+    (time.sub.xco2_df$background)
   
   #make R
   xco2.errors_df <-
     #observed
-    ((time.xco2_df$xco2 - time.xco2_df$bio) -
-    (time.xco2_df$OCO3.bkg)) -
+    ((time.sub.xco2_df$xco2 - time.sub.xco2_df$bio) -
+    (time.sub.xco2_df$background)) -
     #modeled
-    (rowSums(time.xco2_df[,gsub(' ', '', priors)]))
+    (rowSums(time.sub.xco2_df[,gsub(' ', '', priors[,1])]))
   
   spatial.error_df <-
-    data.frame(time = time.xco2_df$date.time,
-               lon = time.xco2_df$lon,
-               lat = time.xco2_df$lat,
+    data.frame(time = time.sub.xco2_df$date.time,
+               lon = time.sub.xco2_df$lon,
+               lat = time.sub.xco2_df$lat,
                error = abs(xco2.errors_df))
   
   R <- spatial.correlation(spatial.error = spatial.error_df,
@@ -230,20 +252,22 @@ for(i in 1:length(SAM.times)) {
                            plot.output.path = 'Out/R')
   
   #do fancy math
-  term.1 <- S_p %*% t(K)
-  term.2 <- solve((K %*% S_p %*% t(K)) + R)
-  term.3 <- (z - (K %*% lambda_p))
+  term.1 <- as.matrix(S_p) %*% t(K)
+  term.2 <- solve((K %*% as.matrix(S_p) %*% t(K)) + R)
+  term.3 <- (z - (K %*% as.matrix(lambda_p)))
   
   lambda_hat <- lambda_p + (term.1 %*% (term.2 %*% term.3))
   S_error <- solve(t(K) %*% solve(R) %*% K + solve(S_p))
   
   errors <- data.frame(prior.errors = term.3,
-                       posterior.errors = (z- (K %*% lambda_hat)),
-                       time = SAM.times[i])
-  lambdas <- data.frame(lambda = lambda_hat,
-                        time = SAM.times[i])
-  S_errors <- data.frame(S = diag(S_error),
-                         time = SAM.times[i])
+                       posterior.errors = (z - (K %*% lambda_hat)),
+                       period = i)
+  lambdas <- data.frame(category= 'Total',
+                        lambda = lambda_hat,
+                        period = i)
+  S_errors <- data.frame(category = 'Total',
+                         S = diag(S_error),
+                         period = i)
   if(i == 1) {
     errors_df <- errors
     lambda_df <- lambdas
@@ -256,19 +280,24 @@ for(i in 1:length(SAM.times)) {
   }
 }
 
+
+stop()
+
 #scaling factors plot
 ggplot() +
   ggtitle('Posterior Scaling Factors') +
   xlab('Period') +
   ylab(expression(hat(lambda))) +
-  geom_line(data = lambda_df, stat = 'identity',
+  geom_bar(data = lambda_df, stat = 'identity',
            position = 'dodge', color = 'black',
-           aes(x = time, y = lambda)) +
+           aes(x = as.character(period), y = lambda,
+               fill = category)) +
   geom_errorbar(data = S_errors_df, position = 'dodge',
                 size = 0.5,
-                aes(x = time,
+                aes(x = as.character(period),
                     ymax = lambda_df$lambda + S,
-                    ymin = lambda_df$lambda - S)) +
+                    ymin = lambda_df$lambda - S,
+                    group = category)) +
   scale_fill_discrete(name = 'Sectors') +
   theme_classic() +
   theme(plot.title = element_text(hjust = 0.5),

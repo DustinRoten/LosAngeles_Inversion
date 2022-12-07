@@ -144,7 +144,7 @@ setup_inversion <- function(api.key, homedir, input.data, workdir, site,
     
     #remove the start time
     #(its not included in the footprint time steps)
-    #reorder the list to be chronologicial
+    #reorder the list to be chronological
     timestep.list <- as.POSIXct(avg.timesteps,
                                 origin = '1970-01-01',
                                 tz = 'UTC')[2:length(avg.timesteps)]
@@ -173,6 +173,13 @@ setup_inversion <- function(api.key, homedir, input.data, workdir, site,
     ############################
     #' Make the `prior_emiss.nc`
     ############################
+    #list previous sector breakdown
+    prev.sector_list <-
+      list.files(file.path(out.dirs, 'include', 'sectors'),
+                                   full.names = TRUE)
+    lapply(prev.sector_list, file.remove)
+    
+    #make sector files
     make_vulcan.prior_ncdf4(site, vulcan.path = domain.path,
                             sector.list = read.csv(sector.definitions.path),
                             times = timestep.list,
